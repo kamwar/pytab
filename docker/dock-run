@@ -1,0 +1,61 @@
+#!/bin/bash -ae
+DOCKER_TAG="trident"
+
+if test -t 1 -a -t 0
+then
+    TTY=--tty
+fi
+
+if [[ "$(uname)" = "Darwin" ]]
+then
+    PLUME_ROOT=$(cd "$(dirname "$0")/.."; pwd)
+    [ -f /usr/X11/bin/xhost ] && \
+        (socat TCP-LISTEN:6000,reuseaddr,fork UNIX-CLIENT:\"$DISPLAY\" &) && \
+        IP=$(ifconfig en0 | grep inet | awk '$1=="inet" {print $2}') && \
+        /usr/X11/bin/xhost + $IP && \
+        DISPLAY=$IP:0 || \
+    echo "Install xquartz for X11 support"
+else
+    PLUME_ROOT=$(dirname "$(dirname "$(realpath "$0")")")
+fi
+
+export USER_ID=$UID
+mkdir -p /tmp/allure-results
+mkdir -p /tmp/automation
+
+(
+    cd "$PLUME_ROOT"/docker
+    docker build --tag "$DOCKER_TAG" .
+)
+exec docker run \
+        --rm \
+        --hostname $(hostname)-docker $DOCKER_NAME \
+        --interactive $TTY \
+        --tmpfs=/tmp:exec \
+        --net host \
+        --env debian_chroot=DOCKER:"$DOCKER_TAG" \
+        --env HOME="$HOME" \
+        --env TERM \
+        --env JOB_NAME \
+        --env BUILD_NUMBER \
+        --env BUILD_URL \
+        --env PLUME_ROOT \
+        --env DISPLAY=$DISPLAY \
+        --workdir "$PLUME_ROOT" \
+        -v/"$PLUME_ROOT":"$PLUME_ROOT"\
+        -v/etc/passwd:/etc/passwd \
+        -v/etc/group:/etc/group \
+        -v$HOME:$HOME \
+        -v/tmp/allure-results:/tmp/allure-results \
+        -v/tmp/automation:/tmp/automation \
+        -v/tmp/.X11-unix:/tmp/.X11-unix \
+        --user $UID:"$USER_ID" \
+        $DOCKER_OPTS \
+        "$DOCKER_TAG" \
+        sh -c '
+            export PYTHONDONTWRITEBYTECODE=true
+            export PIPENV_PATH=$(python3 -m site --user-base)
+            export PYTHONPATH="$PLUME_ROOT:$PYTHONPATH"
+            export PYTHON_PATH="$PLUME_ROOT:$PYTHON_PATH"
+            export PATH="$PLUME_ROOT/tools:$PIPENV_PATH/bin:$PATH"
+            exec "$@"' - "$@"

@@ -1,0 +1,9 @@
+#!/bin/bash
+
+DCONF_DIR=~/.cache/dconf/
+# Check ownership of DCONF_DIR as firefox requires user permission
+[ -d $DCONF_DIR ] && [ $(stat -c %U $DCONF_DIR) = "root" ] && \
+    echo -e "Change owner for directory $DCONF_DIR\nsudo chown -R $USER:$USER ~/.cache/dconf/"
+
+/opt/allure/bin/allure generate --clean /tmp/allure-results -o /tmp/allure-results/report && \
+    firefox /tmp/allure-results/report/index.html
